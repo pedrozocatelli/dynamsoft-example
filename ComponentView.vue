@@ -76,7 +76,7 @@ onMounted(async () => {
     }
 
     await cameraEnhancer.open();
-    await cvRouter.startCapturing('RecognizeNumbersAndLetters');
+    await cvRouter.startCapturing('ReadSingleBarcode');
   } catch (ex) {
     if (ex?.message === componentDestroyedErrorMsg) {
       console.log(componentDestroyedErrorMsg);
