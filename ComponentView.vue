@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router';
 import { CameraEnhancer, CameraView } from "dynamsoft-camera-enhancer";
 import { CaptureVisionRouter } from "dynamsoft-capture-vision-router";
 import { MultiFrameResultCrossFilter } from "dynamsoft-utility";
+import { EnumCapturedResultItemType } from 'dynamsoft-core';
 
 const componentDestroyedErrorMsg = "VideoCapture Component Destroyed";
 
@@ -18,40 +19,66 @@ let isDestroyed = false;
 let cvRouter: CaptureVisionRouter;
 let cameraEnhancer: CameraEnhancer;
 
+
 onMounted(async () => {
   try {
     const internalInstance = getCurrentInstance();
-    cameraViewContainer.value = internalInstance?.refs.cameraViewContainer as HTMLElement;
+    cameraViewContainer.value = internalInstance?.refs.cameraViewContainer;
     const cameraView = await CameraView.createInstance();
 
     cameraEnhancer = await CameraEnhancer.createInstance(cameraView);
 
-    await cameraView.setUIElement(cameraViewContainer.value)
+    await cameraView.setUIElement(cameraViewContainer.value);
 
     cvRouter = await CaptureVisionRouter.createInstance();
     cvRouter.setInput(cameraEnhancer);
 
     cvRouter.addResultReceiver({
+      onCapturedResultReceived: async (result) => {
+        if (!result.items.length) return;
+
+        const resultsContainer = document.querySelector('#results');
+
+        console.log('onCapturedResultReceived');
+        resultsContainer!.textContent = '';
+        for (let item of result.items) {
+          if (
+            item.type != EnumCapturedResultItemType.CRIT_BARCODE &&
+            item.type != EnumCapturedResultItemType.CRIT_TEXT_LINE
+          ) {
+            console.log('its different');
+            continue;
+          }
+        }
+      },
+
+      onRecognizedTextLinesReceived: (result) => {
+        if (result.textLineResultItems.length > 0) {
+          const resultsContainer = document.querySelector('#results');
+          resultsContainer!.textContent = '';
+
+          console.log('onRecognizedTextLinesReceived');
+        }
+      },
+
       onDecodedBarcodesReceived: (result) => {
         if (!result.barcodeResultItems.length) return;
-        for (let item of result.barcodeResultItems) {
-          console.log(item.text)
-        }
+        console.log('onDecodedBarcodesReceived');
       },
     });
 
     const filter = new MultiFrameResultCrossFilter();
-    filter.enableResultCrossVerification("barcode", true);
-    filter.enableResultDeduplication("barcode", true);
+    filter.enableResultCrossVerification('barcode', true);
+    filter.enableResultDeduplication('barcode', true);
     await cvRouter.addResultFilter(filter);
-    if (isDestroyed) { throw Error(componentDestroyedErrorMsg); }
+    if (isDestroyed) {
+      throw Error(componentDestroyedErrorMsg);
+    }
 
     await cameraEnhancer.open();
-    await cvRouter.startCapturing("ReadSingleBarcode");
-
-  } catch (ex: any) {
-
-    if ((ex as Error)?.message === componentDestroyedErrorMsg) {
+    await cvRouter.startCapturing('RecognizeNumbersAndLetters');
+  } catch (ex) {
+    if (ex?.message === componentDestroyedErrorMsg) {
       console.log(componentDestroyedErrorMsg);
     } else {
       let errMsg = ex.message || ex;
@@ -60,7 +87,7 @@ onMounted(async () => {
     }
   }
 
-  resolveInit!();
+  resolveInit();
 });
 
 
@@ -87,7 +114,7 @@ onBeforeUnmount(async () => {
       <div class="camera-title">
         <h1>Scan the barcode on the <b>back</b> of the ID</h1>
       </div>
-      <a class="top left" @click="$router.go(-1)">
+      <a class="top left" @click="">
       <div class="camera-button">
       </div>
       </a>
