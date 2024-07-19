@@ -5,7 +5,6 @@ import { useRouter } from 'vue-router';
 import { CameraEnhancer, CameraView } from "dynamsoft-camera-enhancer";
 import { CaptureVisionRouter } from "dynamsoft-capture-vision-router";
 import { MultiFrameResultCrossFilter } from "dynamsoft-utility";
-import { EnumCapturedResultItemType } from 'dynamsoft-core';
 
 const componentDestroyedErrorMsg = "VideoCapture Component Destroyed";
 
@@ -16,69 +15,58 @@ let resolveInit: () => void;
 const pInit: Promise<void> = new Promise(r => { resolveInit = r });
 let isDestroyed = false;
 
+
 let cvRouter: CaptureVisionRouter;
 let cameraEnhancer: CameraEnhancer;
-
+let parser = null;
 
 onMounted(async () => {
+
   try {
+
     const internalInstance = getCurrentInstance();
-    cameraViewContainer.value = internalInstance?.refs.cameraViewContainer;
+    cameraViewContainer.value = internalInstance?.refs.cameraViewContainer as HTMLElement;
     const cameraView = await CameraView.createInstance();
+    if (isDestroyed) { throw Error(componentDestroyedErrorMsg); } // Check if component is destroyed after every async
 
     cameraEnhancer = await CameraEnhancer.createInstance(cameraView);
+    if (isDestroyed) { throw Error(componentDestroyedErrorMsg); }
 
-    await cameraView.setUIElement(cameraViewContainer.value);
+
+    await cameraView.setUIElement(cameraViewContainer.value)
 
     cvRouter = await CaptureVisionRouter.createInstance();
+    if (isDestroyed) { throw Error(componentDestroyedErrorMsg); }
     cvRouter.setInput(cameraEnhancer);
 
+    // Define a callback for results.
     cvRouter.addResultReceiver({
-      onCapturedResultReceived: async (result) => {
-        if (!result.items.length) return;
-
-        const resultsContainer = document.querySelector('#results');
-
-        console.log('onCapturedResultReceived');
-        resultsContainer!.textContent = '';
-        for (let item of result.items) {
-          if (
-            item.type != EnumCapturedResultItemType.CRIT_BARCODE &&
-            item.type != EnumCapturedResultItemType.CRIT_TEXT_LINE
-          ) {
-            console.log('its different');
-            continue;
-          }
-        }
-      },
-
-      onRecognizedTextLinesReceived: (result) => {
-        if (result.textLineResultItems.length > 0) {
-          const resultsContainer = document.querySelector('#results');
-          resultsContainer!.textContent = '';
-
-          console.log('onRecognizedTextLinesReceived');
-        }
-      },
-
       onDecodedBarcodesReceived: (result) => {
         if (!result.barcodeResultItems.length) return;
-        console.log('onDecodedBarcodesReceived');
-      },
+
+        console.log(result.barcodeResultItems)
+      }
     });
 
+    // Filter out unchecked and duplicate results.
     const filter = new MultiFrameResultCrossFilter();
-    filter.enableResultCrossVerification('barcode', true);
-    filter.enableResultDeduplication('barcode', true);
+    // Filter out unchecked barcodes.
+    filter.enableResultCrossVerification("barcode", true);
+    // Filter out duplicate barcodes within 3 seconds.
+    filter.enableResultDeduplication("barcode", true);
     await cvRouter.addResultFilter(filter);
-    if (isDestroyed) {
-      throw Error(componentDestroyedErrorMsg);
-    }
+    if (isDestroyed) { throw Error(componentDestroyedErrorMsg); }
 
+    // Open camera and start scanning single barcode.
     await cameraEnhancer.open();
-    await cvRouter.startCapturing('ReadSingleBarcode');
-  } catch (ex) {
-    if (ex?.message === componentDestroyedErrorMsg) {
+    if (isDestroyed) { throw Error(componentDestroyedErrorMsg); }
+    await cvRouter.startCapturing('ReadPassport');
+    await cvRouter.startCapturing("ReadSingleBarcode");
+    if (isDestroyed) { throw Error(componentDestroyedErrorMsg); }
+
+  } catch (ex: any) {
+
+    if ((ex as Error)?.message === componentDestroyedErrorMsg) {
       console.log(componentDestroyedErrorMsg);
     } else {
       let errMsg = ex.message || ex;
@@ -87,14 +75,15 @@ onMounted(async () => {
     }
   }
 
-  resolveInit();
+  // Resolve pInit promise once initialization is complete.
+  resolveInit!();
 });
 
-
+// dispose cvRouter when it's no longer needed
 onBeforeUnmount(async () => {
   isDestroyed = true;
   try {
-    await pInit;
+    await pInit; // Wait for the pInit to complete before disposing resources.
     cvRouter?.dispose();
     cameraEnhancer?.dispose();
   } catch (_) { }
@@ -105,6 +94,7 @@ onBeforeUnmount(async () => {
   <div ref="cameraViewContainer" class="component-barcode-scanner">
     <div class="dce-scanarea border-radius">
       <div class="flex items-center" style="height: 80%; position: absolute">
+        <LogoLoader color="#BDF3D4" />
       </div>
       <div class="border-radius">
         <div class="dce-video-container">
@@ -114,8 +104,9 @@ onBeforeUnmount(async () => {
       <div class="camera-title">
         <h1>Scan the barcode on the <b>back</b> of the ID</h1>
       </div>
-      <a class="top left" @click="">
+      <a class="top left" @click="$router.go(-1)">
       <div class="camera-button">
+        <IconCaretOutline fill="#fff" />
       </div>
       </a>
       <div class="right top">
@@ -123,6 +114,10 @@ onBeforeUnmount(async () => {
         <div class="camera-select">
         <select class="dce-sel-camera"></select></div>
       </div>
+      <!-- Removing temporarily until we include scanning in other flows  -->
+      <!-- <a class="right bottom flex flex-row" @click="$router.go(-1)">
+        <button class="link link-white camera-link">Manual Entry</button>
+      </a> -->
     </div>
   </div>
 </template>
@@ -159,7 +154,13 @@ h1 {
 }
 
 .dce-video-container {
+  /* position: absolute;
+  left: 0;
+  top: 0; */
   width: 100%;
+  /* min-width: 80%; */
+  /* width: auto; */
+  /* max-width: 100%; */
   height: 100%;
   border-radius: 20px !important;
 }
