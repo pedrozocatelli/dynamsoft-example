@@ -5,11 +5,16 @@ import { useRouter } from 'vue-router';
 import { CameraEnhancer, CameraView } from "dynamsoft-camera-enhancer";
 import { CaptureVisionRouter } from "dynamsoft-capture-vision-router";
 import { MultiFrameResultCrossFilter } from "dynamsoft-utility";
+import IconCaretOutline from '../components/icons/IconBackCaret.vue';
+import LogoLoader from '../components/LogoLoader.vue';
+import { useCustomersStore } from '../stores/fourleaf';
+import { capitalize } from '../utils/formatFunctions';
 
 const componentDestroyedErrorMsg = "VideoCapture Component Destroyed";
 
 const cameraViewContainer: Ref<HTMLElement | null> = ref(null);
 const router = useRouter();
+const customersStore = useCustomersStore();
 
 let resolveInit: () => void;
 const pInit: Promise<void> = new Promise(r => { resolveInit = r });
@@ -19,6 +24,36 @@ let isDestroyed = false;
 let cvRouter: CaptureVisionRouter;
 let cameraEnhancer: CameraEnhancer;
 let parser = null;
+
+function getField(fieldName, data) {
+    const getData = (start, end) => data.split('ANSI ')[1].split(start)[1].split(end)[0].split('\n')[0];
+
+    const fieldMap = {
+        'lName': () => getData('DCS', 'DD'),
+        'fName': () => getData('DAC', 'DD'),
+        'DOBDay': () => getData('DBB', 'DBA').slice(2, 4),
+        'DOBMonth': () => getData('DBB', 'DBA').slice(0, 2),
+        'DOBYear': () => getData('DBB', 'DBA').slice(4),
+        'idExpirationDay': () => getData('DBA', 'DBC').slice(2, 4),
+        'idExpirationMonth': () => getData('DBA', 'DBC').slice(0, 2),
+        'idExpirationYear': () => getData('DBA', 'DBC').slice(4),
+        'state': () => getData('DAJ', 'DAK'),
+        'streetAddress': () => getData('DAG', 'DAI'),
+        'city': () => getData('DAI', 'DAJ'),
+        'zipCode': () => getData('DAK', 'DCF').slice(0, 5),
+        'expDate': () => {
+            const expData = getData('DBA', 'DBC');
+            const day = expData.slice(2, 4);
+            const month = expData.slice(0, 2);
+            const year = expData.slice(4);
+            return `${year}-${month}-${day}`;
+        },
+        'idNumber': () => getData('DAQ', 'DCS'),
+        'idState': () => data.split('ANSI ')[1].slice(0, 6) // Assuming the return of iin as idState
+    };
+
+    return fieldMap[fieldName] ? fieldMap[fieldName]() : data;
+}
 
 onMounted(async () => {
 
@@ -44,8 +79,30 @@ onMounted(async () => {
       onDecodedBarcodesReceived: (result) => {
         if (!result.barcodeResultItems.length) return;
 
-        console.log(result.barcodeResultItems)
-      }
+        for (let item of result.barcodeResultItems) {
+          customersStore.currentCustomer= {
+          firstName: capitalize(getField('fName', item.text)),
+          lastName: capitalize(getField('lName', item.text)),
+          dobDay: getField('DOBDay', item.text),
+          dobMonth: getField('DOBMonth', item.text),
+          dobYear: getField('DOBYear', item.text),
+          idState: getField('idState', item.text),
+          idNumber: getField('idNumber', item.text),
+          expDate: getField('expDate', item.text),
+          streetAddress : getField('streetAddress', item.text),
+          state : getField('state', item.text),
+          city: getField('city', item.text),
+          zipCode: getField('zipCode', item.text),
+          idExpirationDay: getField('idExpirationDay', item.text),
+          idExpirationMonth: getField('idExpirationMonth', item.text),
+          idExpirationYear: getField('idExpirationYear', item.text),
+        }
+        if ( router.options.history.state.back == '/customers/check-in'){
+          router.back();
+        }
+        router.push({ name: 'customers' });
+        }
+      },
     });
 
     // Filter out unchecked and duplicate results.
@@ -60,7 +117,6 @@ onMounted(async () => {
     // Open camera and start scanning single barcode.
     await cameraEnhancer.open();
     if (isDestroyed) { throw Error(componentDestroyedErrorMsg); }
-    await cvRouter.startCapturing('ReadPassport');
     await cvRouter.startCapturing("ReadSingleBarcode");
     if (isDestroyed) { throw Error(componentDestroyedErrorMsg); }
 

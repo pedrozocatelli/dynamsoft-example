@@ -23,10 +23,10 @@ CoreModule.engineResourcePaths = {
 
 // MRZ
 LicenseManager.initLicense(
-  'My-Key',
+  'KEY',
   true,
 );
 
-CoreModule.loadWasm(['DLR', 'DCP', 'DBR']);
+CoreModule.loadWasm(['DLR', 'DCP']);
 CodeParserModule.loadSpec(['MRTD_TD3_PASSPORT']);
 LabelRecognizerModule.loadRecognitionData('MRZ');
